@@ -51,7 +51,7 @@ jobs:
           echo "ARTIFACT=$OUTPUT" >> "$GITHUB_ENV"
 
       - name: Compress with UPX
-        if: matrix.goos != 'darwin'
+        if: matrix.goos != 'darwin' && !(matrix.goos == 'windows' && matrix.goarch == 'arm64')
         uses: crazy-max/ghaction-upx@v3
         with:
           version: latest
