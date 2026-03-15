@@ -1,1 +1,10 @@
-*.exe
+# Go 编译产物
+antigravity_bypass.exe
+antigravity_bypass
+antigravity_bypass_*
+
+# IDE / 编辑器
+.idea/
+.vscode/
+*.swp
+*.swo
