@@ -10,6 +10,8 @@ import sys
 import json
 import shutil
 import struct
+import hashlib
+import base64
 import platform
 
 
@@ -171,7 +173,7 @@ def _init_paths(base_dir):
 
 
 JS_PATCHED_MARKER = "=114514,"
-JS_RESOURCE_PATH = "out/vs/workbench/workbench.desktop.main.js"
+JS_RESOURCE_PATH = "vs/workbench/workbench.desktop.main.js"
 
 # 匹配 minified 代码中的 <var>=50,<var>=100,<var>=class 模式
 JS_AUTO_PATTERN = re.compile(
@@ -284,20 +286,23 @@ def patch_js():
 
     _log("+", "工具上限 100 -> 114514", indent=1)
     _log("*", "特征: {}".format(original_str), indent=1)
-    _remove_checksum()
+    _update_checksum()
     return True
 
 
-def _remove_checksum():
-    if not os.path.exists(PRODUCT_FILE):
+def _update_checksum():
+    """计算修补后 JS 文件的 SHA256 校验值并写回 product.json。"""
+    if not os.path.exists(PRODUCT_FILE) or not os.path.exists(JS_FILE):
         return
+    with open(JS_FILE, "rb") as f:
+        new_hash = base64.b64encode(hashlib.sha256(f.read()).digest()).decode()
     with open(PRODUCT_FILE, "r", encoding="utf-8") as f:
         product_data = json.load(f)
     if "checksums" in product_data and JS_RESOURCE_PATH in product_data["checksums"]:
-        del product_data["checksums"][JS_RESOURCE_PATH]
+        product_data["checksums"][JS_RESOURCE_PATH] = new_hash
         with open(PRODUCT_FILE, "w", encoding="utf-8") as f:
             json.dump(product_data, f, separators=(",", ":"))
-        _log("+", "已清除 product.json 校验值", indent=1)
+        _log("+", "已更新 product.json 校验值", indent=1)
 
 
 def patch_language_server():
