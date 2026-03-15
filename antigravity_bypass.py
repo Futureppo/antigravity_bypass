@@ -7,20 +7,186 @@ import os
 import sys
 import json
 import shutil
+import glob
 
-IDE_BASE_DIR = r"C:\Users\Administrator\AppData\Local\Programs\Antigravity\resources\app"
+# ============================================================
+# 自动检测 IDE 安装路径
+# ============================================================
 
-# 前端 JS 文件路径
-JS_FILE = os.path.join(IDE_BASE_DIR, r"out\vs\workbench\workbench.desktop.main.js")
+# 用于验证目录是否为有效 Antigravity IDE 安装位置的标志文件
+_VERIFY_FILE = os.path.join("out", "vs", "workbench", "workbench.desktop.main.js")
 
-# product.json 路径
-PRODUCT_FILE = os.path.join(IDE_BASE_DIR, "product.json")
 
-# 语言服务器可执行文件路径
-LS_FILE = os.path.join(
-    IDE_BASE_DIR,
-    r"extensions\antigravity\bin\language_server_windows_x64.exe",
-)
+def _is_valid_ide_dir(path):
+    """检查路径是否为有效的 Antigravity IDE resources/app 目录。"""
+    return os.path.isfile(os.path.join(path, _VERIFY_FILE))
+
+
+def _find_ide_dir():
+    """
+    自动检测 Antigravity IDE 安装路径，按以下优先级搜索:
+    1. 常见安装目录
+    2. Windows 注册表 (App Paths / Uninstall)
+    3. 磁盘根目录快速扫描
+    """
+    candidates = []
+
+    # --- 策略 1: 常见安装目录 ---
+    env_dirs = [
+        os.environ.get("LOCALAPPDATA", ""),
+        os.environ.get("APPDATA", ""),
+        os.environ.get("PROGRAMFILES", ""),
+        os.environ.get("PROGRAMFILES(X86)", ""),
+        os.path.expanduser("~"),
+    ]
+    for base in env_dirs:
+        if not base:
+            continue
+        # 覆盖典型 Electron 应用安装约定
+        candidates.append(os.path.join(base, "Programs", "Antigravity", "resources", "app"))
+        candidates.append(os.path.join(base, "Antigravity", "resources", "app"))
+
+    # 检查常见路径
+    for path in candidates:
+        if _is_valid_ide_dir(path):
+            return path
+
+    # --- 策略 2: 从注册表查找 ---
+    reg_path = _find_from_registry()
+    if reg_path:
+        return reg_path
+
+    # --- 策略 3: 磁盘根目录快速扫描 ---
+    disk_path = _find_from_disk_scan()
+    if disk_path:
+        return disk_path
+
+    return None
+
+
+def _find_from_registry():
+    """从 Windows 注册表查找 Antigravity 安装位置。"""
+    try:
+        import winreg
+    except ImportError:
+        return None
+
+    # 搜索的注册表位置
+    reg_searches = [
+        # App Paths
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Antigravity.exe"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Antigravity.exe"),
+    ]
+
+    for hive, key_path in reg_searches:
+        try:
+            with winreg.OpenKey(hive, key_path) as key:
+                exe_path, _ = winreg.QueryValueEx(key, "")
+                if exe_path and os.path.exists(exe_path):
+                    # 从 exe 路径反推 resources/app 目录
+                    app_dir = os.path.join(os.path.dirname(exe_path), "resources", "app")
+                    if _is_valid_ide_dir(app_dir):
+                        return app_dir
+        except (OSError, FileNotFoundError):
+            continue
+
+    # 搜索 Uninstall 注册表项
+    uninstall_bases = [
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+    ]
+    for hive, base_key in uninstall_bases:
+        try:
+            with winreg.OpenKey(hive, base_key) as key:
+                for i in range(winreg.QueryInfoKey(key)[0]):
+                    try:
+                        sub_name = winreg.EnumKey(key, i)
+                        if "antigravity" not in sub_name.lower():
+                            continue
+                        with winreg.OpenKey(key, sub_name) as sub_key:
+                            install_loc, _ = winreg.QueryValueEx(sub_key, "InstallLocation")
+                            if install_loc:
+                                app_dir = os.path.join(install_loc, "resources", "app")
+                                if _is_valid_ide_dir(app_dir):
+                                    return app_dir
+                    except (OSError, FileNotFoundError):
+                        continue
+        except (OSError, FileNotFoundError):
+            continue
+
+    return None
+
+
+def _find_from_disk_scan():
+    """在各磁盘根目录快速扫描 Antigravity 安装目录（限制深度，避免太慢）。"""
+    # 仅在 Windows 上执行磁盘扫描
+    if sys.platform != "win32":
+        return None
+
+    # 获取所有盘符
+    drives = []
+    for letter in "CDEFGHIJKLMNOPQRSTUVWXYZ":
+        drive = "{}:\\".format(letter)
+        if os.path.isdir(drive):
+            drives.append(drive)
+
+    # 在每个盘符下搜索常见位置（避免全盘遍历）
+    search_subdirs = [
+        "Program Files",
+        "Program Files (x86)",
+        os.path.join("Users", os.environ.get("USERNAME", ""), "AppData", "Local", "Programs"),
+    ]
+    for drive in drives:
+        for sub in search_subdirs:
+            app_dir = os.path.join(drive, sub, "Antigravity", "resources", "app")
+            if _is_valid_ide_dir(app_dir):
+                return app_dir
+
+    return None
+
+
+def detect_ide_path():
+    """检测并返回 IDE 安装路径。找不到时提示用户手动输入。"""
+    path = _find_ide_dir()
+    if path:
+        print("[检测] 已自动定位 IDE 安装路径:")
+        print("       {}".format(path))
+        return path
+
+    print("[检测] 未能自动定位 Antigravity IDE 安装路径。")
+    print("       请手动输入 IDE 的 resources/app 目录路径")
+    print("       (例如: C:\\Users\\你的用户名\\AppData\\Local\\Programs\\Antigravity\\resources\\app)")
+    print()
+    while True:
+        user_input = input("路径> ").strip().strip('"')
+        if not user_input:
+            print("  输入不能为空，请重试。")
+            continue
+        if _is_valid_ide_dir(user_input):
+            return user_input
+        print("  该路径下未找到 IDE 核心文件，请确认路径是否正确后重试。")
+
+
+IDE_BASE_DIR = None
+JS_FILE = None
+PRODUCT_FILE = None
+LS_FILE = None
+
+
+def _init_paths(base_dir):
+    """根据检测到的安装路径初始化所有文件路径。"""
+    global IDE_BASE_DIR, JS_FILE, PRODUCT_FILE, LS_FILE
+    IDE_BASE_DIR = base_dir
+    # 前端 JS 文件路径
+    JS_FILE = os.path.join(IDE_BASE_DIR, "out", "vs", "workbench", "workbench.desktop.main.js")
+    # product.json 路径
+    PRODUCT_FILE = os.path.join(IDE_BASE_DIR, "product.json")
+    # 语言服务器可执行文件路径
+    LS_FILE = os.path.join(
+        IDE_BASE_DIR,
+        "extensions", "antigravity", "bin", "language_server_windows_x64.exe",
+    )
 
 JS_ORIGINAL = "wfa=50,pGe=100,rjn=class"
 JS_PATCHED = "wfa=50,pGe=114514,rjn=class"
@@ -154,6 +320,11 @@ def main():
     print("=" * 60)
     print()
     print("注意: 执行前请确保已完全退出 Antigravity IDE 的所有进程。")
+    print()
+
+    # 自动检测 IDE 安装路径
+    base_dir = detect_ide_path()
+    _init_paths(base_dir)
     print()
 
     js_ok = patch_js()
