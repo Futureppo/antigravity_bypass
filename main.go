@@ -200,7 +200,7 @@ func updateChecksum(jsFile, productFile string) {
 		return
 	}
 	hash := sha256.Sum256(jsData)
-	newHash := base64.StdEncoding.EncodeToString(hash[:])
+	newHash := strings.TrimRight(base64.StdEncoding.EncodeToString(hash[:]), "=")
 
 	productRaw, err := os.ReadFile(productFile)
 	if err != nil {
@@ -224,10 +224,11 @@ func updateChecksum(jsFile, productFile string) {
 	}
 
 	checksumsMap[jsResourcePath] = newHash
-	newProductData, err := json.Marshal(product)
+	newProductData, err := json.MarshalIndent(product, "", "\t")
 	if err != nil {
 		return
 	}
+	newProductData = append(newProductData, '\n')
 	if err := os.WriteFile(productFile, newProductData, 0644); err != nil {
 		return
 	}
