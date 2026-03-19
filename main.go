@@ -75,18 +75,18 @@ func detectIDEPath() string {
 
 	for _, path := range candidates {
 		if isValidIDEDir(path) {
-			logMsg("*", fmt.Sprintf("自动定位 IDE: %s", path), 0)
+			logMsg("*", fmt.Sprintf("自动定位到 IDE: %s", path), 0)
 			return path
 		}
 	}
 
 	if regPath := findFromRegistry(); regPath != "" {
-		logMsg("*", fmt.Sprintf("自动定位 IDE: %s", regPath), 0)
+		logMsg("*", fmt.Sprintf("自动定位到 IDE: %s", regPath), 0)
 		return regPath
 	}
 
 	if diskPath := findFromDiskScan(); diskPath != "" {
-		logMsg("*", fmt.Sprintf("自动定位 IDE: %s", diskPath), 0)
+		logMsg("*", fmt.Sprintf("自动定位到 IDE: %s", diskPath), 0)
 		return diskPath
 	}
 
@@ -127,6 +127,15 @@ func patchJS(jsFile, productFile string) bool {
 	if strings.Contains(content, jsPatchedMarker) {
 		logMsg("-", "已修改过，跳过", 1)
 		return true
+	}
+
+	backupPath := jsFile + ".backup"
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		if err := os.WriteFile(backupPath, contentBytes, 0644); err != nil {
+			logMsg("x", fmt.Sprintf("备份失败: %v", err), 1)
+			return false
+		}
+		logMsg("+", "已创建备份文件", 1)
 	}
 
 	matches := jsAutoPattern.FindAllStringSubmatchIndex(content, -1)
@@ -224,6 +233,12 @@ func updateChecksum(jsFile, productFile string) {
 	}
 
 	checksumsMap[jsResourcePath] = newHash
+
+	productBackup := productFile + ".backup"
+	if _, err := os.Stat(productBackup); os.IsNotExist(err) {
+		os.WriteFile(productBackup, productRaw, 0644)
+	}
+
 	newProductData, err := json.MarshalIndent(product, "", "\t")
 	if err != nil {
 		return
@@ -404,6 +419,45 @@ func permOrErr(permMsg string, err error) string {
 	return fmt.Sprintf("操作失败: %v", err)
 }
 
+func restoreBackups(jsFile, productFile, lsFile string) {
+	files := []struct {
+		path string
+		name string
+	}{
+		{jsFile, "workbench.desktop.main.js"},
+		{productFile, "product.json"},
+		{lsFile, filepath.Base(lsFile)},
+	}
+
+	restored := 0
+	for _, f := range files {
+		backup := f.path + ".backup"
+		if _, err := os.Stat(backup); os.IsNotExist(err) {
+			logMsg("-", fmt.Sprintf("%s 无备份文件，跳过", f.name), 1)
+			continue
+		}
+		data, err := os.ReadFile(backup)
+		if err != nil {
+			logMsg("x", fmt.Sprintf("%s 读取备份文件失败: %v", f.name, err), 1)
+			continue
+		}
+		if err := os.WriteFile(f.path, data, 0755); err != nil {
+			logMsg("x", fmt.Sprintf("%s 恢复失败: %v", f.name, err), 1)
+			continue
+		}
+		os.Remove(backup)
+		logMsg("+", fmt.Sprintf("%s 已恢复", f.name), 1)
+		restored++
+	}
+
+	fmt.Println()
+	if restored > 0 {
+		logMsg("+", fmt.Sprintf("已恢复 %d 个文件，重启 IDE 即可生效", restored), 0)
+	} else {
+		logMsg("!", "未找到任何备份文件", 0)
+	}
+}
+
 func main() {
 	fmt.Println("Antigravity IDE 工具数量限制绕过工具  By https://github.com/Futureppo")
 	fmt.Println("注意: 请先完全退出 Antigravity IDE 的所有进程")
@@ -415,15 +469,37 @@ func main() {
 	productFile := filepath.Join(baseDir, "product.json")
 	lsFile := filepath.Join(baseDir, "extensions", "antigravity", "bin", getLSFilename())
 
-	jsOK := patchJS(jsFile, productFile)
-	lsOK := patchLanguageServer(lsFile)
+	fmt.Println()
+	fmt.Println("请选择操作(输入数字后回车):")
+	fmt.Println("  1. 移除工具数量限制")
+	fmt.Println("  2. 还原所有备份文件")
+	fmt.Print("  > ")
+
+	scanner := bufio.NewScanner(os.Stdin)
+	if !scanner.Scan() {
+		return
+	}
 
 	fmt.Println()
-	if jsOK && lsOK {
-		logMsg("+", "全部完成，重启 IDE 即可生效", 0)
-	} else if jsOK || lsOK {
-		logMsg("!", "部分完成，请检查上方失败信息", 0)
-	} else {
-		logMsg("x", "全部失败，请检查上方错误信息", 0)
+	switch strings.TrimSpace(scanner.Text()) {
+	case "1":
+		jsOK := patchJS(jsFile, productFile)
+		lsOK := patchLanguageServer(lsFile)
+		fmt.Println()
+		if jsOK && lsOK {
+			logMsg("+", "全部完成，重启 IDE 即可生效", 0)
+		} else if jsOK || lsOK {
+			logMsg("!", "部分完成，请检查上方失败信息", 0)
+		} else {
+			logMsg("x", "全部失败，请检查上方错误信息", 0)
+		}
+	case "2":
+		restoreBackups(jsFile, productFile, lsFile)
+	default:
+		logMsg("!", "无效选项", 0)
 	}
+
+	fmt.Println()
+	fmt.Print("按回车键退出...")
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
 }
