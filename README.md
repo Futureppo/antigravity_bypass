@@ -9,6 +9,8 @@
 
 Antigravity IDE 将 MCP 工具数量硬编码限制为 **100 个**，本工具一键移除该限制。采用自动搜索机制，无需手动更新特征码。
 
+**逆向分析与探索过程请参考博客：[从一条报错到两处修补：逆向 Antigravity IDE 的 MCP 工具数量限制](https://blog.futureppo.top/posts/antigravity/)**
+
 ## 免责声明
 
 本项目仅供学习和研究用途。使用本工具产生的任何后果由使用者自行承担。
