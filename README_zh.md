@@ -1,4 +1,4 @@
-# Antigravity Bypass
+<h1 align="center">Antigravity Bypass</h1>
 
 <p align="center">
   <img src="docs/banner.png" alt="Antigravity Bypass Banner" width="800">
