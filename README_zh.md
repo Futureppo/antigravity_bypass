@@ -67,7 +67,7 @@ ANTIGRAVITY_DIR="/path/to/Antigravity" ./antigravity_bypass
 | 平台    | 架构        | 状态   |
 | ------- | ----------- | ------ |
 | Windows | x64 / ARM64 | 已验证 |
-| Linux   | x64 / ARM64 | 待测试 |
+| Linux   | x64 / ARM64 | 已验证 |
 | macOS   | x64 / ARM64 | 待测试 |
 
 遇到问题请带着日志提 [Issue](https://github.com/Futureppo/antigravity_bypass/issues)。
