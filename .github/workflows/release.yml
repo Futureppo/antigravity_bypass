@@ -50,19 +50,16 @@ jobs:
           go build -ldflags="-s -w" -trimpath -o "$OUTPUT" .
           echo "ARTIFACT=$OUTPUT" >> "$GITHUB_ENV"
 
-      - name: Compress with UPX
-        if: matrix.goos != 'darwin' && !(matrix.goos == 'windows' && matrix.goarch == 'arm64')
-        uses: crazy-max/ghaction-upx@v3
-        with:
-          version: latest
-          files: ${{ env.ARTIFACT }}
-          args: --best --lzma
+      - name: Generate SHA256 checksum
+        run: sha256sum "${{ env.ARTIFACT }}" > "${{ env.ARTIFACT }}.sha256"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: antigravity_bypass_${{ matrix.goos }}_${{ matrix.goarch }}
-          path: ${{ env.ARTIFACT }}
+          path: |
+            ${{ env.ARTIFACT }}
+            ${{ env.ARTIFACT }}.sha256
 
   release:
     needs: build
