@@ -17,9 +17,11 @@
   <b>English</b> | <a href="README_zh.md">简体中文</a>
 </p>
 
-> MCP tool count limit bypass for Antigravity IDE — auto-adapts to all versions, cross-platform support
+> Local tool count limit patch for Antigravity IDE — updated for IDE 2.5.5
 
-Antigravity IDE hard-codes the MCP tool count limit to **100**. This tool removes that restriction with one click. It uses an automatic pattern-search mechanism, so no manual signature updates are needed.
+Raises recognized local tool count limits to **8192**. IDE **2.5.5** removed its frontend 100-tool cap, but the language server still contains two **512**-tool checks. This tool locates them through the tool-count error string references and control flow. If both checks cannot be identified, it exits without modifying files.
+
+This project targets **Antigravity IDE**, not the separate Antigravity app on the download page. It changes local checks only; model service limits on tool counts, context, or request sizes still apply.
 
 **For the full reverse engineering write-up, see the blog post: [From an Error Message to Two Patches: Reversing the MCP Tool Limit in Antigravity IDE](https://blog.futureppo.top/posts/antigravity/)**
 
@@ -54,20 +56,33 @@ GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o antigravity_bypass_win_x6
 If automatic detection fails, specify the IDE installation directory via an environment variable:
 
 ```bash
-# The tool will automatically append the resources/app sub-path
-ANTIGRAVITY_DIR="/path/to/Antigravity" ./antigravity_bypass
+# Accepts an installation root, resources/app directory, or macOS .app path
+ANTIGRAVITY_DIR="/path/to/Antigravity IDE" ./antigravity_bypass
 ```
 
 > **Fully quit Antigravity IDE** before running.
 > Re-run the tool after IDE updates.
 
+### Command-line mode
+
+```powershell
+.\antigravity_bypass.exe --check --dir "C:\Apps\Antigravity IDE"
+.\antigravity_bypass.exe --patch --dir "C:\Apps\Antigravity IDE"
+.\antigravity_bypass.exe --restore --dir "C:\Apps\Antigravity IDE"
+```
+
+Without an action flag, the interactive menu is displayed. `--dir` overrides `ANTIGRAVITY_DIR`; invalid explicit paths fail without falling back to another installation. Both the new `Antigravity IDE` and legacy `Antigravity` installation names are detected.
+
 ## Supported Platforms
 
-| Platform | Architecture | Status   |
-| -------- | ------------ | -------- |
-| Windows  | x64 / ARM64  | Verified |
-| Linux    | x64 / ARM64  | Verified |
-| macOS    | x64 / ARM64  | Untested |
+| Platform | Architecture | IDE 2.5.5 verification |
+| --- | --- | --- |
+| Windows | x64 | Official package: inspection, patch, repeated execution, and restore verified |
+| Linux | x64 | Official package: inspection, patch, repeated execution, and restore verified |
+| macOS | x64 | Mach-O parsing implemented; package and runtime not verified |
+| Windows / Linux / macOS | ARM64 | Binary patching unsupported; fails explicitly without applying x64 instructions |
+
+Verification uses extracted package files and byte comparisons; signed-in IDE/model calls have not been tested. See the [2.5.5 compatibility notes](docs/compatibility-2.5.5.md) for sources, hashes, and patch sites. Legacy frontend constants of 100 / 114514 are recognized, but older backends must meet the new complete matching requirements. Compatibility with every historical release is not guaranteed.
 
 If you encounter issues, please open an [Issue](https://github.com/Futureppo/antigravity_bypass/issues) with the relevant logs.
 
@@ -77,13 +92,16 @@ If you encounter issues, please open an [Issue](https://github.com/Futureppo/ant
 > Make sure Antigravity IDE is fully closed (including tray processes), or run the tool with administrator privileges.
 
 **Q: The tool limit came back after an IDE update?**
-> This is expected. IDE updates overwrite the patched files. Simply re-run this tool.
+> Updates overwrite patched files. Run `--check` first. If old backups do not match the new files, move the old `.backup` and `.backup.json` files elsewhere before patching again. Do not restore an older binary over an updated IDE.
 
 **Q: "Tool limit signature not found"?**
-> The IDE may have changed its code structure in a new version. Please open an Issue and include your IDE version number.
+> The code structure may differ. Include the `--check` output, IDE version, OS, and architecture in an Issue. IDE 2.5.5 needing no frontend patch is expected.
 
 **Q: How do I restore the original files?**
-> The tool automatically creates `.backup` files before patching. Run the tool again and select "Restore all backup files" to revert.
+> Patching creates `.backup` files and `.backup.json` checksum records. Select "Restore backups" or use `--restore`. Files are restored only when their checksums match the recorded state; both backup files are then removed. Older backups without checksum records require manual restoration after confirming the IDE version.
+
+**Q: Already used the old patcher on 2.5.5?**
+> The old signature can match unrelated string-processing instructions. Restore matching original files or reinstall the official 2.5.5 package before using this version.
 
 ## License
 

@@ -26,10 +26,12 @@ func getCandidatePaths() []string {
 		if base == "" {
 			continue
 		}
-		candidates = append(candidates,
-			filepath.Join(base, "Programs", "Antigravity", "resources", "app"),
-			filepath.Join(base, "Antigravity", "resources", "app"),
-		)
+		for _, name := range []string{"Antigravity IDE", "Antigravity"} {
+			candidates = append(candidates,
+				filepath.Join(base, "Programs", name, "resources", "app"),
+				filepath.Join(base, name, "resources", "app"),
+			)
+		}
 	}
 	return candidates
 }
@@ -39,6 +41,8 @@ func findFromRegistry() string {
 		root    registry.Key
 		keyPath string
 	}{
+		{registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Antigravity IDE.exe`},
+		{registry.CURRENT_USER, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Antigravity IDE.exe`},
 		{registry.LOCAL_MACHINE, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Antigravity.exe`},
 		{registry.CURRENT_USER, `SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\Antigravity.exe`},
 	}
@@ -82,11 +86,13 @@ func findFromRegistry() string {
 			continue
 		}
 		for _, subName := range subKeys {
-			if !strings.Contains(strings.ToLower(subName), "antigravity") {
-				continue
-			}
 			subKey, err := registry.OpenKey(ub.root, ub.keyPath+`\`+subName, registry.QUERY_VALUE)
 			if err != nil {
+				continue
+			}
+			displayName, _, _ := subKey.GetStringValue("DisplayName")
+			if !strings.Contains(strings.ToLower(subName+" "+displayName), "antigravity") {
+				subKey.Close()
 				continue
 			}
 			installLoc, _, err := subKey.GetStringValue("InstallLocation")
@@ -94,7 +100,7 @@ func findFromRegistry() string {
 			if err != nil || installLoc == "" {
 				continue
 			}
-			appDir := filepath.Join(installLoc, "resources", "app")
+			appDir := filepath.Join(strings.Trim(installLoc, `"`), "resources", "app")
 			if isValidIDEDir(appDir) {
 				return appDir
 			}
@@ -122,9 +128,11 @@ func findFromDiskScan() string {
 			continue
 		}
 		for _, sub := range searchSubdirs {
-			appDir := filepath.Join(drive, sub, "Antigravity", "resources", "app")
-			if isValidIDEDir(appDir) {
-				return appDir
+			for _, name := range []string{"Antigravity IDE", "Antigravity"} {
+				appDir := filepath.Join(drive, sub, name, "resources", "app")
+				if isValidIDEDir(appDir) {
+					return appDir
+				}
 			}
 		}
 	}
