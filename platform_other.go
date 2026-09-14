@@ -51,6 +51,8 @@ func findFromRegistry() string {
 	return ""
 }
 
+func findDesktopFromRegistry() string { return "" }
+
 func findFromDiskScan() string {
 	return ""
 }

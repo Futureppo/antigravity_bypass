@@ -156,7 +156,7 @@ func validateCurrent(p filePatch) error {
 		return err
 	}
 	if !bytes.Equal(current, p.original) {
-		return fmt.Errorf("检查后文件发生变化: %s；请关闭 IDE 后重试", p.path)
+		return fmt.Errorf("检查后文件发生变化: %s；请关闭所选客户端后重试", p.path)
 	}
 	return nil
 }
@@ -224,6 +224,10 @@ func restoreInstallation(base string) error {
 	for _, path := range backups {
 		paths = append(paths, path[:len(path)-len(".backup")])
 	}
+	return restoreFiles(paths)
+}
+
+func restoreFiles(paths []string) error {
 	var files []filePatch
 	for _, path := range paths {
 		backup, err := os.ReadFile(path + ".backup")
@@ -246,7 +250,7 @@ func restoreInstallation(base string) error {
 			return err
 		}
 		if digest(backup) != record.Original || (digest(p.original) != record.Patched && digest(p.original) != record.Original && digest(p.original) != record.Previous) {
-			return fmt.Errorf("文件或备份已变化（可能 IDE 已更新），拒绝恢复旧版本: %s", path)
+			return fmt.Errorf("文件或备份已变化（可能客户端已更新），拒绝恢复旧版本: %s", path)
 		}
 		p.updated = backup
 		files = append(files, p)

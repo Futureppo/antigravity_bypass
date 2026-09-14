@@ -37,6 +37,14 @@ func getCandidatePaths() []string {
 }
 
 func findFromRegistry() string {
+	return findInstallationFromRegistry(resolveIDEPath)
+}
+
+func findDesktopFromRegistry() string {
+	return findInstallationFromRegistry(resolveDesktopPath)
+}
+
+func findInstallationFromRegistry(resolve func(string) (string, error)) string {
 	regSearches := []struct {
 		root    registry.Key
 		keyPath string
@@ -60,8 +68,8 @@ func findFromRegistry() string {
 		if _, statErr := os.Stat(exePath); statErr != nil {
 			continue
 		}
-		appDir := filepath.Join(filepath.Dir(exePath), "resources", "app")
-		if isValidIDEDir(appDir) {
+		appDir, err := resolve(filepath.Dir(exePath))
+		if err == nil {
 			return appDir
 		}
 	}
@@ -100,8 +108,8 @@ func findFromRegistry() string {
 			if err != nil || installLoc == "" {
 				continue
 			}
-			appDir := filepath.Join(strings.Trim(installLoc, `"`), "resources", "app")
-			if isValidIDEDir(appDir) {
+			appDir, err := resolve(strings.Trim(installLoc, `"`))
+			if err == nil {
 				return appDir
 			}
 		}

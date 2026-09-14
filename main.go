@@ -96,11 +96,25 @@ func findLanguageServer(base string) (string, error) {
 }
 
 func runOperation(base, action string) error {
-	logMsg("*", "IDE: "+base, 0)
+	desktop := isValidDesktopDir(base)
+	if desktop {
+		logMsg("*", "桌面版: "+base, 0)
+	} else {
+		logMsg("*", "IDE: "+base, 0)
+	}
 	if action == "restore" {
+		if desktop {
+			return restoreFiles([]string{filepath.Join(base, "bin", "language_server.exe")})
+		}
 		return restoreInstallation(base)
 	}
-	plan, err := inspectInstallation(base)
+	var plan installationPlan
+	var err error
+	if desktop {
+		plan, err = inspectDesktopInstallation(base)
+	} else {
+		plan, err = inspectInstallation(base)
+	}
 	for _, message := range plan.messages {
 		logMsg("*", message, 0)
 	}
@@ -114,12 +128,13 @@ func runOperation(base, action string) error {
 	if err := applyPlan(plan.files); err != nil {
 		return err
 	}
-	logMsg("+", "全部完成，重启 IDE 即可生效", 0)
+	logMsg("+", "全部完成，重启所选客户端即可生效", 0)
 	return nil
 }
 
 func main() {
-	dir := flag.String("dir", "", "IDE 安装目录或 resources/app 目录")
+	dir := flag.String("dir", "", "安装目录、IDE 的 resources/app 或桌面版的 resources 目录")
+	client := flag.String("client", "auto", "选择客户端: auto、ide、desktop（Windows x64 桌面版）")
 	check := flag.Bool("check", false, "只检查兼容性，不修改任何文件")
 	patch := flag.Bool("patch", false, "修补本地工具数量限制")
 	restore := flag.Bool("restore", false, "还原备份")
@@ -135,16 +150,21 @@ func main() {
 		fmt.Fprintln(os.Stderr, "请只指定 --check、--patch 或 --restore 中的一项")
 		os.Exit(1)
 	}
-	fmt.Println("Antigravity IDE 工具数量限制修补工具  By https://github.com/Futureppo")
+	if *client != "auto" && *client != "ide" && *client != "desktop" {
+		fmt.Fprintln(os.Stderr, "--client 只接受 auto、ide 或 desktop")
+		os.Exit(1)
+	}
+	fmt.Println("Antigravity 工具数量限制修补工具（IDE / 桌面版）  By https://github.com/Futureppo")
 	if action != "check" {
-		fmt.Println("注意: 请先完全退出 Antigravity IDE 的所有进程")
+		fmt.Println("注意: 请先完全退出所选 Antigravity 客户端的所有进程")
 	}
 	scanner := bufio.NewScanner(os.Stdin)
-	base, err := detectIDEPath(*dir)
+	base, err := detectClientPath(*dir, *client)
 	if err != nil && action == "" && *dir == "" && os.Getenv("ANTIGRAVITY_DIR") == "" {
-		fmt.Println("未找到 IDE，请输入安装目录或 resources/app 路径:")
+		fmt.Println(err)
+		fmt.Println("请输入目标客户端的安装目录:")
 		if scanner.Scan() {
-			base, err = resolveIDEPath(scanner.Text())
+			base, err = resolveClientPath(scanner.Text(), *client)
 		}
 	}
 	if err != nil {

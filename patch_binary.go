@@ -160,7 +160,10 @@ func isErrorBlock(code []byte, start, ref int) bool {
 	return true
 }
 
-func findLimitSites(data []byte, layout binaryLayout) ([]limitSite, error) {
+func findLimitSites(data []byte, layout binaryLayout, supportedLimits ...uint32) ([]limitSite, error) {
+	if len(supportedLimits) == 0 {
+		supportedLimits = []uint32{128, 512, 114514, toolLimit}
+	}
 	refs := errorReferences(data, layout)
 	if len(refs) != 2 {
 		return nil, fmt.Errorf("需要确认两处工具数量报错引用，实际找到 %d 处；不使用旧版全局指令替换", len(refs))
@@ -174,7 +177,14 @@ func findLimitSites(data []byte, layout binaryLayout) ([]limitSite, error) {
 			continue
 		}
 		value := binary.LittleEndian.Uint32(code[i+3:])
-		if value != 128 && value != 512 && value != 114514 && value != toolLimit {
+		supported := false
+		for _, limit := range supportedLimits {
+			if value == limit {
+				supported = true
+				break
+			}
+		}
+		if !supported {
 			continue
 		}
 		branch, end, target, condition := i+7, 0, 0, byte(0)
@@ -221,12 +231,12 @@ func findLimitSites(data []byte, layout binaryLayout) ([]limitSite, error) {
 	return sites, nil
 }
 
-func planLanguageServer(data []byte) ([]byte, []string, error) {
+func planLanguageServer(data []byte, supportedLimits ...uint32) ([]byte, []string, error) {
 	layout, err := readBinaryLayout(data)
 	if err != nil {
 		return nil, nil, err
 	}
-	sites, err := findLimitSites(data, layout)
+	sites, err := findLimitSites(data, layout, supportedLimits...)
 	if err != nil {
 		return nil, nil, err
 	}

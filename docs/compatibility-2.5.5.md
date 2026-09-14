@@ -1,6 +1,6 @@
 # Antigravity IDE 2.5.5 compatibility
 
-Verified on 2026-09-15 against build `2.5.5-4923483625488384`, linked from the [official download page](https://antigravity.google/download/). The separate Antigravity app listed on that page has a different release sequence and is not the target of this project.
+Verified on 2026-09-15 against build `2.5.5-4923483625488384`, linked from the [official download page](https://antigravity.google/download/). These notes cover the IDE. The separate Antigravity app listed on that page has a different release sequence; its Windows x64 support is documented in the [desktop 2.13.0 notes](compatibility-desktop-2.13.0.md).
 
 ## Official packages
 
