@@ -1,4 +1,4 @@
-<h1 align="center">Antigravity Bypass</h1>
+<h1 align="center">Antigravity Bypass — MCP Tool Limit Patch</h1>
 
 <p align="center">
   <img src="docs/banner.png" alt="Antigravity Bypass Banner" width="800">
@@ -17,9 +17,9 @@
   <b>English</b> | <a href="README_zh.md">简体中文</a>
 </p>
 
-> Local tool count limit patch for Antigravity IDE 2.5.5 and Windows x64 desktop 2.13.0
+> Google Antigravity MCP tool limit patch — IDE 2.5.5 and Windows x64 desktop 2.13.0
 
-Raises recognized local tool count limits to **8192**. IDE **2.5.5** has two **512**-tool checks; the standalone desktop app **2.13.0** has two **800**-tool checks. This tool locates them through the tool-count error string references and control flow. If both checks cannot be identified, it exits without modifying files. Neither version needs a frontend patch.
+Antigravity Bypass raises recognized local **Model Context Protocol (MCP)** tool count limits to **8192**. IDE **2.5.5** has two **512**-tool checks; the standalone desktop app **2.13.0** has two **800**-tool checks. This tool locates them through the tool-count error string references and control flow. If both checks cannot be identified, it exits without modifying files. Neither version needs a frontend patch.
 
 Supports **Antigravity IDE** and the **Windows x64 standalone Antigravity app 2.13.0**. The CLI and desktop apps for Linux, macOS, and ARM64 are not supported. It changes local checks only; model service limits on tool counts, context, or request sizes still apply.
 
@@ -108,6 +108,9 @@ Desktop verification used an isolated profile without signing in. Real model req
 If you encounter issues, please open an [Issue](https://github.com/Futureppo/antigravity_bypass/issues) with the relevant logs.
 
 ## FAQ
+
+**Q: Antigravity reports `number of tools exceeds ...` or `Cannot enable more tools because it would exceed the limit of ...`?**
+> These messages come from local MCP tool-count checks: the language server uses the format string `number of tools exceeds %d`, and older IDE versions also enforce a frontend limit. Run `--check` for your client to check compatibility before patching. Limits enforced by Google's model service, including its 128-tool limit where applicable, are unaffected by this patch.
 
 **Q: "File is in use" error?**
 > Make sure the selected Antigravity client is fully closed (including tray processes), or run the tool with administrator privileges.

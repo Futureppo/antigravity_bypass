@@ -1,4 +1,4 @@
-<h1 align="center">Antigravity Bypass</h1>
+<h1 align="center">Antigravity Bypass — MCP 工具数量限制修补</h1>
 
 <p align="center">
   <img src="docs/banner.png" alt="Antigravity Bypass Banner" width="800">
@@ -17,9 +17,9 @@
   <a href="README.md">English</a> | <b>简体中文</b>
 </p>
 
-> Antigravity 本地工具数量限制修补工具 — 支持 IDE 2.5.5 和 Windows x64 桌面版 2.13.0
+> Google Antigravity MCP 工具数量限制修补 — 支持 IDE 2.5.5 和 Windows x64 桌面版 2.13.0
 
-将可识别的本地工具数量上限提高至 **8192**。IDE **2.5.5** 有两处 **512** 工具检查，独立桌面版 **2.13.0** 有两处 **800** 工具检查；本工具通过工具数量报错的字符串引用和跳转关系定位它们。未能完整识别两处检查时会退出，不修改文件。这两个版本均无需修改前端。
+Antigravity Bypass 将可识别的本地 **MCP（Model Context Protocol，模型上下文协议）** 工具数量上限提高至 **8192**。IDE **2.5.5** 有两处 **512** 工具检查，独立桌面版 **2.13.0** 有两处 **800** 工具检查；本工具通过工具数量报错的字符串引用和跳转关系定位它们。未能完整识别两处检查时会退出，不修改文件。这两个版本均无需修改前端。
 
 支持 **Antigravity IDE** 和 **Windows x64 独立桌面版 Antigravity 2.13.0**。CLI 及 Linux、macOS、ARM64 桌面版暂不支持。只修改本地检查，不改变模型服务端的工具数量、上下文或请求大小限制。
 
@@ -109,6 +109,9 @@ Windows x64 桌面版 **2.13.0**：
 遇到问题请带着日志提 [Issue](https://github.com/Futureppo/antigravity_bypass/issues)。
 
 ## 常见问题
+
+**Q: Antigravity 提示 `number of tools exceeds ...` 或 `Cannot enable more tools because it would exceed the limit of ...`？**
+> 这些报错来自本地 MCP 工具数量检查：语言服务器使用 `number of tools exceeds %d` 格式的报错，旧版 IDE 还会在前端限制工具数量。请针对所用客户端运行 `--check`，确认兼容性后再修补。Google 模型服务端施加的限制（包括适用场景下的 128 工具限制）不受此补丁影响。
 
 **Q: 提示"文件被占用"怎么办？**
 > 请确保已完全退出所选 Antigravity 客户端（包括托盘进程），或以管理员权限运行。
