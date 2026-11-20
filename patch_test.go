@@ -46,7 +46,9 @@ func TestFrontendDetection(t *testing.T) {
 // A small PE64 with the two different control-flow shapes found in IDE 2.5.5.
 // Addresses deliberately differ from the real installers: detection must follow
 // RIP-relative references, not hard-coded file offsets.
-func samplePE() []byte {
+func samplePE() []byte { return samplePEWithLimit(512) }
+
+func samplePEWithLimit(limit uint32) []byte {
 	b := make([]byte, 0x700)
 	copy(b, "MZ")
 	binary.LittleEndian.PutUint32(b[0x3c:], 0x80)
@@ -73,9 +75,9 @@ func samplePE() []byte {
 	}
 	copy(b[0x610:], toolCountError)
 	c := b[0x200:0x600]
-	copy(c[0x20:], []byte{0x48, 0x81, 0xfb, 0, 2, 0, 0, 0x7e, 0x67}) // CMP RBX,512; JLE 0x90
+	copy(c[0x20:], []byte{0x48, 0x81, 0xfb, byte(limit), byte(limit >> 8), byte(limit >> 16), byte(limit >> 24), 0x7e, 0x67}) // CMP RBX,limit; JLE 0x90
 	c[0x8f] = 0xc3
-	copy(c[0x120:], []byte{0x48, 0x81, 0xf9, 0, 2, 0, 0, 0x0f, 0x8f, 0x63, 0, 0, 0}) // CMP RCX,512; JG 0x190
+	copy(c[0x120:], []byte{0x48, 0x81, 0xf9, byte(limit), byte(limit >> 8), byte(limit >> 16), byte(limit >> 24), 0x0f, 0x8f, 0x63, 0, 0, 0}) // CMP RCX,limit; JG 0x190
 	for _, pos := range []int{0x50, 0x1b0} {
 		copy(c[pos:], []byte{0x48, 0x8d, 0x1d, 0, 0, 0, 0, 0xb9, 26, 0, 0, 0})
 		binary.LittleEndian.PutUint32(c[pos+3:], uint32(0x2010-(0x1000+pos+7)))
@@ -147,6 +149,9 @@ func TestBinaryRejectsUnknownOrUnsafeMatches(t *testing.T) {
 
 func makeInstallation(t *testing.T) string {
 	t.Helper()
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
 	base := filepath.Join(t.TempDir(), "Antigravity IDE", "resources", "app")
 	js := []byte(unlimitedJS)
 	h := sha256.Sum256(js)
@@ -164,6 +169,75 @@ func makeInstallation(t *testing.T) string {
 		}
 	}
 	return base
+}
+
+func TestAgyBackendLayout(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("HOME", home)
+	base := filepath.Join(t.TempDir(), "Antigravity IDE", "resources", "app")
+	js := []byte(unlimitedJS)
+	h := sha256.Sum256(js)
+	product, _ := json.Marshal(map[string]any{"ideVersion": "2.7.0", "checksums": map[string]string{jsResourcePath: base64.RawStdEncoding.EncodeToString(h[:])}})
+	for path, data := range map[string][]byte{
+		filepath.Join("out", filepath.FromSlash(jsResourcePath)): js, "product.json": product,
+		filepath.Join("extensions", "agy", "dist", "extension.js"): []byte("// Antigravity IDE 2.7.0"),
+	} {
+		full := filepath.Join(base, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, data, 0755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	binaryPath, err := agyBinaryPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := samplePEWithLimit(800)
+	if err := os.MkdirAll(filepath.Dir(binaryPath), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(binaryPath, original, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := findLanguageServer(base); err != nil || got != binaryPath {
+		t.Fatalf("backend discovery: %s %v", got, err)
+	}
+	plan, err := inspectInstallation(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.files) != 1 || plan.files[0].path != binaryPath {
+		t.Fatalf("unexpected plan: %+v", plan.files)
+	}
+	if got := binary.LittleEndian.Uint32(plan.files[0].updated[0x223:]); got != toolLimit {
+		t.Fatalf("first site: %d", got)
+	}
+	if got := binary.LittleEndian.Uint32(plan.files[0].updated[0x323:]); got != toolLimit {
+		t.Fatalf("second site: %d", got)
+	}
+	if err := applyPlan(plan.files); err != nil {
+		t.Fatal(err)
+	}
+	again, err := inspectInstallation(base)
+	if err != nil || len(again.files) != 0 {
+		t.Fatalf("second run: %v", err)
+	}
+	if err := restoreInstallation(base); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := os.ReadFile(binaryPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(restored, original) {
+		t.Fatal("restore differed from original")
+	}
+	if _, err := os.Stat(binaryPath + ".backup"); !os.IsNotExist(err) {
+		t.Fatal("backup retained after successful restore")
+	}
 }
 
 func TestInstallationLifecycle(t *testing.T) {

@@ -29,9 +29,9 @@ The language server contains two references to `number of tools exceeds %d`. Eac
 | Linux x64 | `0x05ad954a` | `cmp rbx, 0x200; jle ...` | `0x05ad954d` |
 | Linux x64 | `0x05bacb08` | `cmp rcx, 0x200; jg ...` | `0x05bacb0b` |
 
-The new patcher follows RIP-relative string references inside the code section, validates the error argument setup using an x86 decoder, and requires both checks to be identified uniquely. It writes **8192** (`0x2000`) into the two immediate operands, preserving instructions, branches, and file sizes. The offsets above are evidence, not hard-coded matching rules.
+The new patcher follows RIP-relative string references inside the code section, validates the error argument setup using an x86 decoder, and requires both checks to be identified uniquely. ARM64 packages use the equivalent ADRP/ADD and `CMP` matcher added for IDE 2.7.0 and later. It writes **8192** (`0x2000`) into the two immediate operands, preserving instructions, branches, and file sizes. The offsets above are evidence, not hard-coded matching rules.
 
-The old pattern `48 83 f9 64 0f 8e` also matches an unrelated string-processing branch in 2.5.5. It is no longer used as a patch target. ARM64 is rejected before scanning for x64 instructions. Unknown or incomplete structures fail before writing any target file.
+The old pattern `48 83 f9 64 0f 8e` also matches an unrelated string-processing branch in 2.5.5. It is no longer used as a patch target. Unsupported architectures fail before scanning, and x64 instructions are never applied to ARM64 files. Unknown or incomplete structures fail before writing any target file.
 
 ## Package verification
 

@@ -1,6 +1,6 @@
 # Antigravity desktop 2.13.0 compatibility
 
-Verified on 2026-09-15 against the standalone **Windows x64** desktop app, build `2.13.0-6362815968182272`. This change adds desktop support alongside the existing [IDE 2.5.5 support](compatibility-2.5.5.md). CLI, Linux/macOS desktop, and ARM64 desktop support are outside this change.
+Verified on 2026-09-15 against the standalone **Windows x64** desktop app, build `2.13.0-6362815968182272`. This historical record adds 2.13.0 Windows x64 support alongside [IDE 2.5.5](compatibility-2.5.5.md). Later releases add Linux, macOS, ARM64, IDE 2.7.0/2.8.0, CLI 1.5.x, and desktop 2.33.0; see the current README for the full matrix.
 
 ## Official package
 
@@ -38,7 +38,7 @@ The 156,513,792-byte language server contains two references to `number of tools
 
 The patcher follows the error string references and validates the branch/error-block relationship using the existing x86 decoder. Both checks must be identified uniquely. It changes the two immediate operands from `20 03 00 00` (800) to `00 20 00 00` (8192), changing **four bytes total**. Instruction opcodes, branches, file size, and all other bytes are preserved. These offsets document the verified package; they are not hard-coded matching rules.
 
-The desktop matcher accepts only 800 and the patched value 8192. The IDE's existing accepted limits are unchanged.
+The 2.13.0 desktop matcher accepts only 800 and the patched value 8192. The IDE's existing accepted limits are unchanged. ARM64 uses the same logical limit but rewrites CMP Xn, #0x320 as CMP Xn, #0x2, LSL #12 (8192), since 8192 does not fit the 12-bit immediate.
 
 ## Usage
 

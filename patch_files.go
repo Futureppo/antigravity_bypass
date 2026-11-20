@@ -96,7 +96,12 @@ func inspectInstallation(base string) (installationPlan, error) {
 		return plan, err
 	}
 	var messages []string
-	ls.updated, messages, err = planLanguageServer(ls.original)
+	if isAgyLanguageServer(lsPath) {
+		plan.messages = append(plan.messages, "后端: "+lsPath+"（与 Antigravity CLI 共用）")
+		ls.updated, messages, err = planLanguageServer(ls.original, 100, 128, 512, 800, 114514, toolLimit)
+	} else {
+		ls.updated, messages, err = planLanguageServer(ls.original)
+	}
 	if err != nil {
 		return plan, err
 	}
@@ -223,6 +228,9 @@ func restoreInstallation(base string) error {
 	}
 	for _, path := range backups {
 		paths = append(paths, path[:len(path)-len(".backup")])
+	}
+	if path, err := agyBinaryPath(); err == nil {
+		paths = append(paths, path)
 	}
 	return restoreFiles(paths)
 }

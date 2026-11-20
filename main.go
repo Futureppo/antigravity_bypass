@@ -69,16 +69,36 @@ func getLSFilename() string {
 	return name
 }
 
-func findLanguageServer(base string) (string, error) {
+// Antigravity IDE 2.7.0 no longer bundles a language server inside its
+// extension. The `agy` extension installs and launches a shared hub binary in
+// the user's Antigravity CLI directory instead.
+func agyBinaryPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	name := "agy"
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return filepath.Join(home, ".gemini", "bin", name), nil
+}
+
+func isAgyLanguageServer(path string) bool {
+	name := strings.ToLower(filepath.Base(path))
+	return name == "agy" || name == "agy.exe"
+}
+
+func findLegacyLanguageServer(base string) ([]string, error) {
 	binDir := filepath.Join(base, "extensions", "antigravity", "bin")
 	preferred := filepath.Join(binDir, getLSFilename())
 	if info, err := os.Stat(preferred); err == nil && !info.IsDir() {
-		return preferred, nil
+		return []string{preferred}, nil
 	}
 	// Allow inspecting an extracted package for another OS/architecture.
 	entries, err := os.ReadDir(binDir)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	var candidates []string
 	for _, entry := range entries {
@@ -89,30 +109,65 @@ func findLanguageServer(base string) (string, error) {
 			candidates = append(candidates, filepath.Join(binDir, name))
 		}
 	}
-	if len(candidates) != 1 {
+	return candidates, nil
+}
+
+func findLanguageServer(base string) (string, error) {
+	candidates, legacyErr := findLegacyLanguageServer(base)
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+	if len(candidates) > 1 {
 		return "", fmt.Errorf("无法唯一确定语言服务器，找到 %d 个候选", len(candidates))
 	}
-	return candidates[0], nil
+	if info, err := os.Stat(filepath.Join(base, "extensions", "agy")); err == nil && info.IsDir() {
+		path, err := agyBinaryPath()
+		if err != nil {
+			return "", err
+		}
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path, nil
+		}
+		return "", fmt.Errorf("IDE 2.7+ 使用共享后端，请先启动一次 IDE 完成安装: %s", path)
+	}
+	if legacyErr != nil {
+		return "", legacyErr
+	}
+	return "", fmt.Errorf("无法唯一确定语言服务器，找到 0 个候选")
 }
 
 func runOperation(base, action string) error {
-	desktop := isValidDesktopDir(base)
-	if desktop {
+	cli := isCLIPath(base)
+	desktop := !cli && isValidDesktopDir(base)
+	switch {
+	case cli:
+		logMsg("*", "CLI: "+base, 0)
+	case desktop:
 		logMsg("*", "桌面版: "+base, 0)
-	} else {
+	default:
 		logMsg("*", "IDE: "+base, 0)
 	}
 	if action == "restore" {
+		if cli {
+			return restoreFiles([]string{base})
+		}
 		if desktop {
-			return restoreFiles([]string{filepath.Join(base, "bin", "language_server.exe")})
+			path, err := findDesktopLanguageServer(base)
+			if err != nil {
+				return err
+			}
+			return restoreFiles([]string{path})
 		}
 		return restoreInstallation(base)
 	}
 	var plan installationPlan
 	var err error
-	if desktop {
+	switch {
+	case cli:
+		plan, err = inspectCLIInstallation(base)
+	case desktop:
 		plan, err = inspectDesktopInstallation(base)
-	} else {
+	default:
 		plan, err = inspectInstallation(base)
 	}
 	for _, message := range plan.messages {
@@ -133,8 +188,8 @@ func runOperation(base, action string) error {
 }
 
 func main() {
-	dir := flag.String("dir", "", "安装目录、IDE 的 resources/app 或桌面版的 resources 目录")
-	client := flag.String("client", "auto", "选择客户端: auto、ide、desktop（Windows x64 桌面版）")
+	dir := flag.String("dir", "", "安装目录、IDE 的 resources/app、桌面版的 resources 或 agy/CLI 二进制")
+	client := flag.String("client", "auto", "选择客户端: auto、ide、desktop、cli")
 	check := flag.Bool("check", false, "只检查兼容性，不修改任何文件")
 	patch := flag.Bool("patch", false, "修补本地工具数量限制")
 	restore := flag.Bool("restore", false, "还原备份")
@@ -150,11 +205,11 @@ func main() {
 		fmt.Fprintln(os.Stderr, "请只指定 --check、--patch 或 --restore 中的一项")
 		os.Exit(1)
 	}
-	if *client != "auto" && *client != "ide" && *client != "desktop" {
-		fmt.Fprintln(os.Stderr, "--client 只接受 auto、ide 或 desktop")
+	if *client != "auto" && *client != "ide" && *client != "desktop" && *client != "cli" {
+		fmt.Fprintln(os.Stderr, "--client 只接受 auto、ide、desktop 或 cli")
 		os.Exit(1)
 	}
-	fmt.Println("Antigravity 工具数量限制修补工具（IDE / 桌面版）  By https://github.com/Futureppo")
+	fmt.Println("Antigravity 工具数量限制修补工具（IDE / 桌面版 / CLI）  By https://github.com/Futureppo")
 	if action != "check" {
 		fmt.Println("注意: 请先完全退出所选 Antigravity 客户端的所有进程")
 	}

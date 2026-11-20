@@ -12,31 +12,46 @@ import (
 	"strings"
 )
 
-const desktopVersion = "2.13.0"
-
 // Desktop directories are normalized to resources, whereas IDE directories
-// are normalized to resources/app. Only the Windows desktop layout is supported.
-func isValidDesktopDir(path string) bool {
-	for _, name := range []string{"app.asar", filepath.Join("bin", "language_server.exe")} {
-		info, err := os.Stat(filepath.Join(path, name))
-		if err != nil || !info.Mode().IsRegular() {
-			return false
+// are normalized to resources/app. Windows, Linux, and macOS layouts are
+// recognized; the backend's own format/architecture is validated separately.
+func findDesktopLanguageServer(base string) (string, error) {
+	for _, name := range []string{"language_server.exe", "language_server"} {
+		path := filepath.Join(base, "bin", name)
+		if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() {
+			return path, nil
 		}
 	}
-	return true
+	return "", fmt.Errorf("未找到桌面版后端: %s", filepath.Join(base, "bin", "language_server"))
+}
+
+func isValidDesktopDir(path string) bool {
+	if info, err := os.Stat(filepath.Join(path, "app.asar")); err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	_, err := findDesktopLanguageServer(path)
+	return err == nil
 }
 
 func resolveDesktopPath(path string) (string, error) {
 	path = strings.Trim(strings.TrimSpace(path), "\"")
-	for _, candidate := range []string{path, filepath.Join(path, "resources")} {
+	for _, candidate := range []string{path, filepath.Join(path, "resources"), filepath.Join(path, "Contents", "Resources")} {
 		if isValidDesktopDir(candidate) {
 			return filepath.Abs(candidate)
 		}
 	}
-	return "", fmt.Errorf("未找到 Windows 桌面版的 resources/app.asar 和 resources/bin/language_server.exe: %s", path)
+	return "", fmt.Errorf("未找到桌面版的 resources/app.asar 和 resources/bin/language_server(.exe): %s", path)
 }
 
 func resolveClientPath(path, client string) (string, error) {
+	if client == "cli" {
+		return resolveCLIPath(path)
+	}
+	if client == "auto" {
+		if base, err := resolveCLIPath(path); err == nil {
+			return base, nil
+		}
+	}
 	if client != "desktop" {
 		if base, err := resolveIDEPath(path); err == nil {
 			return base, nil
@@ -51,11 +66,14 @@ func resolveClientPath(path, client string) (string, error) {
 }
 
 func detectClientPath(custom, client string) (string, error) {
-	if client != "auto" && client != "ide" && client != "desktop" {
-		return "", fmt.Errorf("--client 只接受 auto、ide 或 desktop")
+	if client != "auto" && client != "ide" && client != "desktop" && client != "cli" {
+		return "", fmt.Errorf("--client 只接受 auto、ide、desktop 或 cli")
 	}
 	if custom == "" {
 		custom = os.Getenv("ANTIGRAVITY_DIR")
+	}
+	if client == "cli" {
+		return detectCLIPath(custom)
 	}
 	if custom != "" {
 		return resolveClientPath(custom, client)
@@ -76,13 +94,18 @@ func detectClientPath(custom, client string) (string, error) {
 		}
 	}
 	if idePath != "" && desktopPath != "" {
-		return "", fmt.Errorf("同时找到 IDE 和桌面版，请用 --client ide / --client desktop 或 --dir 选择目标")
+		return "", fmt.Errorf("同时找到 IDE 和桌面版，请用 --client ide / --client desktop / --client cli 或 --dir 选择目标")
 	}
 	if desktopPath != "" {
 		return desktopPath, nil
 	}
 	if idePath != "" {
 		return idePath, nil
+	}
+	if client == "auto" {
+		if path, err := detectCLIPath(""); err == nil {
+			return path, nil
+		}
 	}
 	return "", fmt.Errorf("未找到客户端 (%s)，请用 --dir 指定安装目录", client)
 }
@@ -172,9 +195,6 @@ func inspectDesktopInstallation(base string) (installationPlan, error) {
 		return plan, fmt.Errorf("app.asar 不是已识别的 Antigravity 独立桌面版")
 	}
 	plan.messages = append(plan.messages, "桌面版版本: "+product.Version)
-	if product.Version != desktopVersion {
-		return plan, fmt.Errorf("桌面版目前仅验证 %s，当前为 %s；未修改", desktopVersion, product.Version)
-	}
 	launcher, err := readASARFile(archive, "dist/languageServer.js")
 	if err != nil {
 		return plan, err
@@ -182,27 +202,32 @@ func inspectDesktopInstallation(base string) (installationPlan, error) {
 	for _, marker := range []string{
 		"const binName = isWindows ? 'language_server.exe' : 'language_server';",
 		"path_1.default.join(process.resourcesPath, 'bin', binName)",
-		"'--standalone'", "'--subclient_type'", "'hub'",
 	} {
 		if !bytes.Contains(launcher, []byte(marker)) {
 			return plan, fmt.Errorf("桌面版后端启动结构未识别；未修改")
 		}
 	}
-	ls, err := loadPatch(filepath.Join(base, "bin", "language_server.exe"))
+	legacyArgs := bytes.Contains(launcher, []byte("'--standalone'")) &&
+		bytes.Contains(launcher, []byte("'--subclient_type'"))
+	splitArgs := bytes.Contains(launcher, []byte("baseLsArgs")) &&
+		bytes.Contains(launcher, []byte("'--enable_sidecars'"))
+	if !legacyArgs && !splitArgs {
+		return plan, fmt.Errorf("桌面版后端启动参数未识别；未修改")
+	}
+	lsPath, err := findDesktopLanguageServer(base)
 	if err != nil {
 		return plan, err
 	}
-	// Desktop 2.13.0 is a Windows PE64 package. Do not extend IDE or other
-	// client/platform support by applying its 800-tool rule globally.
-	if !bytes.HasPrefix(ls.original, []byte("MZ")) {
-		return plan, fmt.Errorf("桌面版目前只支持 Windows x64 安装包")
+	ls, err := loadPatch(lsPath)
+	if err != nil {
+		return plan, err
 	}
 	var messages []string
-	ls.updated, messages, err = planLanguageServer(ls.original, 800, toolLimit)
+	ls.updated, messages, err = planLanguageServer(ls.original, 100, 128, 512, 800, 114514, toolLimit)
 	if err != nil {
 		return plan, err
 	}
-	plan.messages = append(plan.messages, "桌面版前端: 2.13.0 内置界面无需修改", "桌面版后端: resources/bin/language_server.exe")
+	plan.messages = append(plan.messages, "桌面版前端: "+product.Version+" 内置界面无需修改", "桌面版后端: "+lsPath)
 	plan.messages = append(plan.messages, messages...)
 	if !bytes.Equal(ls.original, ls.updated) {
 		plan.files = append(plan.files, ls)
